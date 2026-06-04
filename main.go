@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/url"
@@ -14,6 +15,21 @@ import (
 	"github.com/chromedp/chromedp"
 	"github.com/joho/godotenv"
 )
+
+type AvitoAdvert struct {
+	ID             string `json:"id"`
+	Title          string `json:"title"`
+	URL            string `json:"url"`
+	Price          *int   `json:"price"`
+	Currency       string `json:"currency"`
+	PriceText      string `json:"priceText"`
+	Description    string `json:"description"`
+	Location       string `json:"location"`
+	Rating         string `json:"rating"`
+	Reviews        string `json:"reviews"`
+	HasMessenger   bool   `json:"hasMessenger"`
+	HasPhoneButton bool   `json:"hasPhoneButton"`
+}
 
 func main() {
 	err := godotenv.Load()
@@ -40,81 +56,56 @@ func main() {
 		log.Fatal(err)
 	}
 
-	fmt.Println(html[:100])
+	adverts, err := ParseAvitoAdverts(html, pageURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	out, _ := json.MarshalIndent(adverts, "", "  ")
+	fmt.Println(string(out))
+	fmt.Println("adverts:", len(adverts))
+}
+
+func ParseAvitoAdverts(html string, pageURL string) ([]AvitoAdvert, error) {
+	baseURL, err := url.Parse(pageURL)
+	if err != nil {
+		return nil, err
+	}
 
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
-	baseURL, err := url.Parse(pageURL)
-	if err != nil {
-		log.Fatal(err)
-	}
+	var adverts []AvitoAdvert
 
-	doc.Find(`[data-marker="item"][data-item-id]`).Each(func(_ int, card *goquery.Selection) {
-		id, _ := card.Attr("data-item-id")
-		fmt.Println(id)
+	doc.Find(`[data-marker="item"][data-item-id]`).Each(func(_ int, advert *goquery.Selection) {
+		id, _ := advert.Attr("data-item-id")
 
-		titleEl := card.Find(`[data-marker="item-title"]`).First()
-		title := cleanText(titleEl.Text())
-		fmt.Println(title)
-
+		titleEl := advert.Find(`[data-marker="item-title"]`).First()
 		href, _ := titleEl.Attr("href")
-		URL := cleanURL(baseURL, href)
-		fmt.Println(URL)
 
-		priceRaw, _ := card.Find(`[data-marker="item-price"] meta[itemprop="price"]`).First().Attr("content")
-		//fmt.Println(priceRaw)
-		parsedPrice := parsePrice(priceRaw)
-		fmt.Println(*parsedPrice)
-		currency, _ := card.Find(`[data-marker="item-price"] meta[itemprop="priceCurrency"]`).First().Attr("content")
-		fmt.Println(currency)
-		description, _ := card.Find(`meta[itemprop="description"]`).First().Attr("content")
-		fmt.Println(description)
-		// image, _ := card.Find(`[data-marker="item-image"] img[itemprop="image"]`).First().Attr("src")
-		// fmt.Println(image) // тут видимо куски ссылок
+		priceRaw, _ := advert.Find(`[data-marker="item-price"] meta[itemprop="price"]`).First().Attr("content")
+		currency, _ := advert.Find(`[data-marker="item-price"] meta[itemprop="priceCurrency"]`).First().Attr("content")
+		description, _ := advert.Find(`meta[itemprop="description"]`).First().Attr("content")
 
-		// images := []string{}
-		// card.Find(`[data-marker^="slider-image/image-"]`).Each(func(_ int, imgNode *goquery.Selection) {
-		// 	marker, ok := imgNode.Attr("data-marker")
-		// 	if ok {
-		// 		images = append(images, strings.TrimPrefix(marker, "slider-image/image-"))
-		// 	}
-		// })
-
-		PriceText := cleanText(card.Find(`[data-marker="item-price-value"]`).First().Text())
-		fmt.Println(PriceText) // это можно потом убрать - или использовать для вывода потом
-
-		badges := []string{}
-		card.Find(`[data-marker^="badge-title-"]`).Each(func(_ int, badge *goquery.Selection) {
-			if text := cleanText(badge.Text()); text != "" {
-				badges = append(badges, text)
-			}
+		adverts = append(adverts, AvitoAdvert{
+			ID:             id,
+			Title:          cleanText(titleEl.Text()),
+			URL:            cleanURL(baseURL, href),
+			Price:          parsePrice(priceRaw),
+			Currency:       currency,
+			PriceText:      cleanText(advert.Find(`[data-marker="item-price-value"]`).First().Text()),
+			Description:    cleanText(description),
+			Location:       cleanText(advert.Find(`[data-marker="item-location"]`).First().Text()),
+			Rating:         cleanText(advert.Find(`[data-marker="seller-rating/score"]`).First().Text()),
+			Reviews:        cleanText(advert.Find(`[data-marker="seller-info/summary"]`).First().Text()),
+			HasMessenger:   advert.Find(`[data-marker="messenger-button"], [data-marker="messenger-button/link"]`).Length() > 0,
+			HasPhoneButton: advert.Find(`[data-marker^="item-phone-button"]`).Length() > 0,
 		})
-
-		Location := cleanText(card.Find(`[data-marker="item-location"]`).First().Text())
-		fmt.Println(Location)
-
-		// Date := cleanText(card.Find(`[data-marker="item-date"]`).First().Text())
-		// fmt.Println(Date) //может посикать ещё, но пока относительная дата объявления не очень полезна
-
-		Rating := cleanText(card.Find(`[data-marker="seller-rating/score"]`).First().Text())
-		fmt.Println(Rating)
-		Reviews := cleanText(card.Find(`[data-marker="seller-info/summary"]`).First().Text())
-		fmt.Println(Reviews)
-
-		fmt.Println(badges)
-
-		HasMessenger := card.Find(`[data-marker="messenger-button"], [data-marker="messenger-button/link"]`).Length() > 0
-		fmt.Println(HasMessenger)
-
-		HasPhoneButton := card.Find(`[data-marker^="item-phone-button"]`).Length() > 0
-		fmt.Println(HasPhoneButton)
-
-		fmt.Println()
 	})
 
+	return adverts, nil
 }
 
 func cleanText(s string) string {
@@ -134,8 +125,6 @@ func cleanURL(base *url.URL, href string) string {
 	absolute := base.ResolveReference(u)
 	query := absolute.Query()
 	query.Del("context")
-	//absolute.RawQuery = query.Encode()
-	// delete excessive parameters
 	absolute.RawQuery = ""
 
 	return absolute.String()
