@@ -2,11 +2,12 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/csv"
 	"fmt"
 	"log"
 	"net/url"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -61,9 +62,45 @@ func main() {
 		log.Fatal(err)
 	}
 
-	out, _ := json.MarshalIndent(adverts, "", "  ")
-	fmt.Println(string(out))
-	fmt.Println("adverts:", len(adverts))
+	// out, _ := json.MarshalIndent(adverts, "", "  ")
+	// fmt.Println(string(out))
+	// fmt.Println("adverts:", len(adverts))
+
+	//tagsFromValue := GetJSONTags(adverts[0])
+	// fmt.Println("Field names(from json-tags):", tagsFromValue)
+
+	// fmt.Println(adverts[0])
+	// slice := StructToStringSlice(adverts[0])
+	// fmt.Printf("%q\n", slice)
+
+	advertsCSV := make([][]string, 0, len(adverts)+1)
+	advertsCSV = append(advertsCSV, GetJSONTags(adverts[0]))
+	for _, advert := range adverts {
+		advertsCSV = append(advertsCSV, StructToStringSlice(advert))
+	}
+	//fmt.Println(advertsCSV)
+
+	file, err := os.Create("output.csv")
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	defer file.Close()
+
+	file.Write([]byte{0xEF, 0xBB, 0xBF}) // BOM signature, to show correct Russian in Excel
+
+	writer := csv.NewWriter(file)
+	writer.Comma = ';' // for correct csv parsing by Excel
+	for _, record := range advertsCSV {
+		err := writer.Write(record)
+		if err != nil {
+			fmt.Println("Error:", err)
+			return
+		}
+	}
+
+	writer.Flush()
+	//fmt.Println("CSV written to folder!")
 }
 
 func ParseAvitoAdverts(html string, pageURL string) ([]AvitoAdvert, error) {
@@ -136,4 +173,57 @@ func parsePrice(s string) *int {
 		return nil
 	}
 	return &n
+}
+
+func GetJSONTags(v any) []string {
+	t := reflect.TypeOf(v)
+
+	if t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+
+	if t.Kind() != reflect.Struct {
+		return nil
+	}
+
+	var tags []string
+
+	for field := range t.Fields() {
+		tagValue := field.Tag.Get("json")
+
+		if tagValue == "-" || tagValue == "" {
+			continue
+		}
+
+		cleanTag, _, _ := strings.Cut(tagValue, ",")
+		tags = append(tags, cleanTag)
+	}
+
+	return tags
+}
+
+func StructToStringSlice(obj any) []string {
+	val := reflect.ValueOf(obj)
+
+	if val.Kind() == reflect.Pointer {
+		val = val.Elem()
+	}
+
+	if val.Kind() != reflect.Struct {
+		return nil
+	}
+
+	result := make([]string, 0, val.NumField())
+
+	for _, field := range val.Fields() {
+
+		if field.Kind() == reflect.Pointer && !field.IsNil() {
+			field = field.Elem()
+		}
+
+		strVal := fmt.Sprint(field.Interface())
+		result = append(result, strVal)
+	}
+
+	return result
 }
