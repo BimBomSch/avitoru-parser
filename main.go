@@ -14,6 +14,8 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/chromedp/chromedp"
+	"github.com/jedib0t/go-pretty/v6/table"
+	"github.com/jedib0t/go-pretty/v6/text"
 	"github.com/joho/godotenv"
 )
 
@@ -100,7 +102,9 @@ func main() {
 	}
 
 	writer.Flush()
-	//fmt.Println("CSV written to folder!")
+	fmt.Println("CSV written to folder!")
+
+	PrintTablesInTerminal(advertsCSV)
 }
 
 func ParseAvitoAdverts(html string, pageURL string) ([]AvitoAdvert, error) {
@@ -226,4 +230,43 @@ func StructToStringSlice(obj any) []string {
 	}
 
 	return result
+}
+
+func PrintTablesInTerminal(stringBuffer [][]string) {
+	if len(stringBuffer) < 2 {
+		return
+	}
+
+	headers := stringBuffer[0]
+	rowsData := stringBuffer[1:]
+
+	for _, row := range rowsData {
+		t := table.NewWriter()
+		t.SetOutputMirror(os.Stdout)
+
+		id := "N/A"
+		if len(row) > 0 {
+			id = row[0]
+		}
+
+		t.AppendHeader(table.Row{"Property", fmt.Sprintf("ID: %s", id)})
+
+		for colIdx := 1; colIdx < len(headers); colIdx++ {
+			val := ""
+			if colIdx < len(row) {
+				val = row[colIdx]
+			}
+			t.AppendRow(table.Row{headers[colIdx], val})
+		}
+
+		// Настройки отображения карточки
+		t.SetColumnConfigs([]table.ColumnConfig{
+			{Number: 1, WidthMax: 15, WidthMaxEnforcer: text.WrapText},
+			{Number: 2, WidthMax: 60, WidthMaxEnforcer: text.WrapText},
+		})
+
+		t.SetStyle(table.StyleLight)
+		t.Render()
+		fmt.Println()
+	}
 }
