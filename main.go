@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/csv"
 	"fmt"
+	"io"
 	"log"
 	"net/url"
 	"os"
@@ -104,7 +106,29 @@ func main() {
 	writer.Flush()
 	fmt.Println("CSV written to folder!")
 
-	PrintTablesInTerminal(advertsCSV)
+	// reading from csv
+
+	//filePath := "output_20260605_1409.csv"
+	filePath := "output.csv"
+	fileBytes, err := os.ReadFile(filePath)
+	if err != nil {
+		log.Fatalf("Can't read the file: %v", err)
+	}
+
+	bom := []byte{0xEF, 0xBB, 0xBF}
+	cleanBytes, _ := bytes.CutPrefix(fileBytes, bom)
+
+	r := csv.NewReader(bytes.NewReader(cleanBytes))
+	r.Comma = ';'
+
+	advertsFromCSV, err := r.ReadAll()
+	if err != nil {
+		log.Fatalf("CSV parsing error: %v", err)
+	}
+
+	//
+
+	PrintTablesInTerminal(advertsFromCSV)
 }
 
 func ParseAvitoAdverts(html string, pageURL string) ([]AvitoAdvert, error) {
@@ -269,4 +293,40 @@ func PrintTablesInTerminal(stringBuffer [][]string) {
 		t.Render()
 		fmt.Println()
 	}
+}
+
+////////////////////
+
+// CleanBOMReader убирает UTF-8 BOM, если он присутствует в начале потока
+func CleanBOMReader(r io.Reader) io.Reader {
+	// Считываем первые 3 байта для проверки
+	buf := make([]byte, 3)
+	n, err := r.Read(buf)
+	if err != nil && err != io.EOF {
+		return r
+	}
+
+	// Если это UTF-8 BOM (0xEF, 0xBB, 0xBF), то возвращаем оставшуюся часть
+	if n == 3 && buf[0] == 0xEF && buf[1] == 0xBB && buf[2] == 0xBF {
+		return r
+	}
+
+	// Если BOM нет, склеиваем считанные байты обратно с потоком
+	return io.MultiReader(bytes.NewReader(buf[:n]), r)
+}
+
+func mains() {
+	// Симулируем файл с BOM в памяти: BOM + "name;age"
+	csvData := append([]byte{0xEF, 0xBB, 0xBF}, []byte("name;age\nJohn;30")...)
+
+	// Оборачиваем чтение файла в наш очиститель BOM
+	cleanedReader := CleanBOMReader(bytes.NewReader(csvData))
+
+	reader := csv.NewReader(cleanedReader)
+	reader.Comma = ';'
+
+	records, _ := reader.ReadAll()
+
+	// Теперь имя первой колонки чистое, без скрытых байтов
+	fmt.Printf("Первая колонка: %q\n", records[0][0]) // "name"
 }
