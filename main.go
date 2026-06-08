@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/csv"
 	"fmt"
-	"io"
 	"log"
 	"net/url"
 	"os"
@@ -127,8 +126,42 @@ func main() {
 	}
 
 	//
+	var advertsDownloaded []AvitoAdvert
+
+	for _, v := range advertsFromCSV[1:] {
+
+		priceVal, err := strconv.Atoi(v[3])
+
+		var pricePtr *int
+		if err == nil {
+			pricePtr = &priceVal
+		}
+
+		hasM, _ := strconv.ParseBool(v[10])
+		hasP, _ := strconv.ParseBool(v[11])
+
+		advert := AvitoAdvert{
+			ID:             v[0],     //string `json:"id"`
+			Title:          v[1],     //string `json:"title"`
+			URL:            v[2],     //string `json:"url"`
+			Price:          pricePtr, //*int   `json:"price"`
+			Currency:       v[4],     //string `json:"currency"`
+			PriceText:      v[5],     //string `json:"priceText"`
+			Description:    v[6],     //string `json:"description"`
+			Location:       v[7],     //string `json:"location"`
+			Rating:         v[8],     //string `json:"rating"`
+			Reviews:        v[9],     //string `json:"reviews"`
+			HasMessenger:   hasM,     //bool   `json:"hasMessenger"`
+			HasPhoneButton: hasP,     //bool   `json:"hasPhoneButton"`
+
+		}
+		advertsDownloaded = append(advertsDownloaded, advert)
+	}
 
 	PrintTablesInTerminal(advertsFromCSV)
+
+	//
+	fmt.Println(advertsDownloaded)
 }
 
 func ParseAvitoAdverts(html string, pageURL string) ([]AvitoAdvert, error) {
@@ -293,40 +326,4 @@ func PrintTablesInTerminal(stringBuffer [][]string) {
 		t.Render()
 		fmt.Println()
 	}
-}
-
-////////////////////
-
-// CleanBOMReader убирает UTF-8 BOM, если он присутствует в начале потока
-func CleanBOMReader(r io.Reader) io.Reader {
-	// Считываем первые 3 байта для проверки
-	buf := make([]byte, 3)
-	n, err := r.Read(buf)
-	if err != nil && err != io.EOF {
-		return r
-	}
-
-	// Если это UTF-8 BOM (0xEF, 0xBB, 0xBF), то возвращаем оставшуюся часть
-	if n == 3 && buf[0] == 0xEF && buf[1] == 0xBB && buf[2] == 0xBF {
-		return r
-	}
-
-	// Если BOM нет, склеиваем считанные байты обратно с потоком
-	return io.MultiReader(bytes.NewReader(buf[:n]), r)
-}
-
-func mains() {
-	// Симулируем файл с BOM в памяти: BOM + "name;age"
-	csvData := append([]byte{0xEF, 0xBB, 0xBF}, []byte("name;age\nJohn;30")...)
-
-	// Оборачиваем чтение файла в наш очиститель BOM
-	cleanedReader := CleanBOMReader(bytes.NewReader(csvData))
-
-	reader := csv.NewReader(cleanedReader)
-	reader.Comma = ';'
-
-	records, _ := reader.ReadAll()
-
-	// Теперь имя первой колонки чистое, без скрытых байтов
-	fmt.Printf("Первая колонка: %q\n", records[0][0]) // "name"
 }
