@@ -53,7 +53,7 @@ func main() {
 
 	err = chromedp.Run(ctx,
 		chromedp.Navigate(pageURL),
-		chromedp.WaitReady(`[data-marker="item"][data-item-id]`, chromedp.ByQuery),
+		chromedp.WaitReady(`[data-marker="item"][data-item-id]`, chromedp.ByQuery), // can comment for offline development.
 		chromedp.OuterHTML("html", &html, chromedp.ByQuery),
 	)
 	if err != nil {
@@ -65,64 +65,23 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// out, _ := json.MarshalIndent(adverts, "", "  ")
-	// fmt.Println(string(out))
-	// fmt.Println("adverts:", len(adverts))
-
-	//tagsFromValue := GetJSONTags(adverts[0])
-	// fmt.Println("Field names(from json-tags):", tagsFromValue)
-
-	// fmt.Println(adverts[0])
-	// slice := StructToStringSlice(adverts[0])
-	// fmt.Printf("%q\n", slice)
-
 	advertsCSV := make([][]string, 0, len(adverts)+1)
 	advertsCSV = append(advertsCSV, GetJSONTags(adverts[0]))
 	for _, advert := range adverts {
 		advertsCSV = append(advertsCSV, StructToStringSlice(advert))
 	}
-	//fmt.Println(advertsCSV)
 
-	file, err := os.Create("output.csv")
+	// writing to csv
+	err = WriteExcelCSV("output.csv", advertsCSV)
 	if err != nil {
 		fmt.Println("Error:", err)
-		return
 	}
-	defer file.Close()
-
-	file.Write([]byte{0xEF, 0xBB, 0xBF}) // BOM signature, to show correct Russian in Excel
-
-	writer := csv.NewWriter(file)
-	writer.Comma = ';' // for correct csv parsing by Excel
-	for _, record := range advertsCSV {
-		err := writer.Write(record)
-		if err != nil {
-			fmt.Println("Error:", err)
-			return
-		}
-	}
-
-	writer.Flush()
-	fmt.Println("CSV written to folder!")
 
 	// reading from csv
 
-	//filePath := "output_20260605_1409.csv"
-	filePath := "output.csv"
-	fileBytes, err := os.ReadFile(filePath)
+	advertsFromCSV, err := ReadExcelCSV("output.csv")
 	if err != nil {
-		log.Fatalf("Can't read the file: %v", err)
-	}
-
-	bom := []byte{0xEF, 0xBB, 0xBF}
-	cleanBytes, _ := bytes.CutPrefix(fileBytes, bom)
-
-	r := csv.NewReader(bytes.NewReader(cleanBytes))
-	r.Comma = ';'
-
-	advertsFromCSV, err := r.ReadAll()
-	if err != nil {
-		log.Fatalf("CSV parsing error: %v", err)
+		fmt.Println("Error:", err)
 	}
 
 	//
@@ -162,6 +121,47 @@ func main() {
 
 	//
 	fmt.Println(advertsDownloaded)
+}
+
+func ReadExcelCSV(filePath string) ([][]string, error) {
+	fileBytes, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("Can't read the file: %v", err)
+	}
+
+	bom := []byte{0xEF, 0xBB, 0xBF}
+	cleanBytes, _ := bytes.CutPrefix(fileBytes, bom)
+
+	r := csv.NewReader(bytes.NewReader(cleanBytes))
+	r.Comma = ';'
+
+	data, err := r.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("CSV parsing error: %v", err)
+	}
+	return data, nil
+}
+
+func WriteExcelCSV(filePath string, data [][]string) error {
+	file, err := os.Create(filePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	file.Write([]byte{0xEF, 0xBB, 0xBF}) // BOM signature, to show correct Russian in Excel
+
+	writer := csv.NewWriter(file)
+	writer.Comma = ';' // for correct csv parsing by Excel
+	for _, record := range data {
+		err := writer.Write(record)
+		if err != nil {
+			return err
+		}
+	}
+
+	writer.Flush()
+	return nil
 }
 
 func ParseAvitoAdverts(html string, pageURL string) ([]AvitoAdvert, error) {
