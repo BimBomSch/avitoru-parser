@@ -53,7 +53,7 @@ func main() {
 
 	err = chromedp.Run(ctx,
 		chromedp.Navigate(pageURL),
-		chromedp.WaitReady(`[data-marker="item"][data-item-id]`, chromedp.ByQuery), // can comment for offline development.
+		//chromedp.WaitReady(`[data-marker="item"][data-item-id]`, chromedp.ByQuery), // can comment for offline development.
 		chromedp.OuterHTML("html", &html, chromedp.ByQuery),
 	)
 	if err != nil {
@@ -65,30 +65,31 @@ func main() {
 		log.Fatal(err)
 	}
 
-	advertsCSV := make([][]string, 0, len(adverts)+1)
-	advertsCSV = append(advertsCSV, GetJSONTags(adverts[0]))
-	for _, advert := range adverts {
-		advertsCSV = append(advertsCSV, StructToStringSlice(advert))
-	}
+	advertsFlatSlice := AvitoAdvertToSlice(adverts)
 
 	// writing to csv
-	err = WriteExcelCSV("output.csv", advertsCSV)
+	err = WriteExcelCSV("output.csv", advertsFlatSlice)
 	if err != nil {
 		fmt.Println("Error:", err)
 	}
 
 	// reading from csv
-
 	advertsFromCSV, err := ReadExcelCSV("output.csv")
 	if err != nil {
 		fmt.Println("Error:", err)
 	}
 
-	//
-	var advertsDownloaded []AvitoAdvert
+	advertsDownloaded := SliceToAvitoAdverts(advertsFromCSV)
 
-	for _, v := range advertsFromCSV[1:] {
+	PrintTablesInTerminal(advertsFromCSV)
 
+	fmt.Println(advertsDownloaded)
+}
+
+func SliceToAvitoAdverts(advertsSlice [][]string) []AvitoAdvert {
+	var adverts []AvitoAdvert
+
+	for _, v := range advertsSlice[1:] {
 		priceVal, err := strconv.Atoi(v[3])
 
 		var pricePtr *int
@@ -114,13 +115,18 @@ func main() {
 			HasPhoneButton: hasP,     //bool   `json:"hasPhoneButton"`
 
 		}
-		advertsDownloaded = append(advertsDownloaded, advert)
+		adverts = append(adverts, advert)
 	}
+	return adverts
+}
 
-	PrintTablesInTerminal(advertsFromCSV)
-
-	//
-	fmt.Println(advertsDownloaded)
+func AvitoAdvertToSlice(avitoAdverts []AvitoAdvert) [][]string {
+	advertsSlice := make([][]string, 0, len(avitoAdverts)+1)
+	advertsSlice = append(advertsSlice, GetJSONTags(avitoAdverts[0]))
+	for _, advert := range avitoAdverts {
+		advertsSlice = append(advertsSlice, StructToStringSlice(advert))
+	}
+	return advertsSlice
 }
 
 func ReadExcelCSV(filePath string) ([][]string, error) {
